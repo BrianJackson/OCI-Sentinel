@@ -1,0 +1,5 @@
+azure-functions
+oci
+requests
+msrestazure
+azure-loganalytics
