@@ -13,4 +13,6 @@ This function app will poll Oracle Cloud Audit Events API every 5 mins for logs.
 2. Review: https://docs.oracle.com/en/cloud/paas/identity-cloud/17.3.6/rest-api/OATOAuthClientWebApp.html
 3. Navigate to the Azure Storage Account for the Function.  The account name can be found in the Application Settings - AzureWebJobsStorage key
 4. Select the file share and navigate to "/site/wwwwroot/" and add your OCI configuration folder here.   In the localsettings.sample.json, there is a relative path to a folder the folder which is called /.oci
-4. Copy the configuration folder to a location 
+4. Update the Application Settings to reflect the name and location of your configuration.  The files that should be present are:
+  - config
+  - <name of your key file>.pem
