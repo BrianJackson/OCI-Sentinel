@@ -6,6 +6,7 @@ from azure.common.credentials import ServicePrincipalCredentials
 from azure.loganalytics import LogAnalyticsDataClient
 from azure.loganalytics.models import QueryBody
 
+
 import json
 import requests
 from datetime import datetime, timezone, timedelta
@@ -25,19 +26,15 @@ def main(mytimer: func.TimerRequest) -> None:
     logging.info('Python timer trigger function ran at %s', utc_timestamp)
     initOCI()
 
-class DatetimeEncoder(json.JSONEncoder):
-    def default(self, obj):
-        try:
-            return super(DatetimeEncoder, obj).default(obj)
-        except TypeError:
-            return str(obj)
 
 def initOCI():
 
     # Set up OCI config
-    config = oci.config.from_file(
-        os.environ["OCI_PATH_TO_CONFIG"],
-        "DEFAULT")
+    #config = oci.config.from_file(
+    #    os.environ["OCI_PATH_TO_CONFIG"],
+    #    "DEFAULT")
+
+    config = get_config()
 
     # Create a service client
     identity = oci.identity.IdentityClient(config)
@@ -88,7 +85,9 @@ def initOCI():
         for event in audit_events: 
             jsondoc = json.loads(str(event))
             parsed_json = json.dumps(jsondoc, indent=4, sort_keys=True)
-            post_data(customer_id, shared_key, parsed_json, log_type)
+            #print("The event time is: {0}".format(jsondoc["event_time"]))
+            # We use the event_time in OCI as the Date Generated in Log Analytics
+            post_data(customer_id, shared_key, parsed_json, log_type, jsondoc["event_time"])
             #print(parsed_json)
 
 
@@ -155,11 +154,13 @@ def build_signature(customer_id, shared_key, date, content_length, method, conte
     return authorization
 
 # Build and send a request to the POST API
-def post_data(customer_id, shared_key, body, log_type):
+def post_data(customer_id, shared_key, body, log_type, event_time):
     method = 'POST'
     content_type = 'application/json'
     resource = '/api/logs'
-    rfc1123date = datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')
+    # Conversion of the OCI event time to RFC 1123 date format string
+    rfc1123date = datetime.strptime(event_time[:23],'%Y-%m-%dT%H:%M:%S.%f') \
+                    .strftime('%a, %d %b %Y %H:%M:%S GMT')
     content_length = len(body)
     signature = build_signature(customer_id, shared_key, rfc1123date, content_length, method, content_type, resource)
     uri = 'https://' + customer_id + '.ods.opinsights.azure.com' + resource + '?api-version=2016-04-01'
@@ -173,31 +174,31 @@ def post_data(customer_id, shared_key, body, log_type):
     }
     response = requests.post(uri, data=body, headers=headers)
     if (response.status_code >= 200 and response.status_code <= 299):
-        print('Accepted')
+        print('Log Analytics Event Accepted - OCI Event Time: {0}'.format(rfc1123date))
     else:
+        logging.error("Log Analytics returned a {0}, headers: {1}, body:\n {2}".format(response.status_code, headers, body))
         print(response.status_code)
 
 
 
 def get_start_time(log_type):
+    workspace_id = os.environ["LOG_ANALYTICS_CUSTID"] # from the log analytics workspace
+    
+    # Use Managed Service Identity if available once the management SDKs are GA
+    #from azure.identity import DefaultAzureCredential
+    #credentials = DefaultAzureCredential()
 
-    TENANT_ID = os.environ["AZURE_TENANT_ID"]  # AAD Tenant
-    CLIENT_ID = os.environ["AZURE_CLIENT_ID"]  # AAD Application / Client ID for registered Service Principal
-    KEY = os.environ["AZURE_CLIENT_SECRET"] # # AAD Client Secret
-    WORKSPACE_ID = os.environ["LOG_ANALYTICS_CUSTID"] # from the log analytics workspace
-    LOG_ANALYTICS_LOGTYPE = os.environ["LOG_ANALYTICS_LOGTYPE"] # The custom log in Log Analytics has '_CL' appended to this name
-
+    # Use a service principal that is granted permission in Log Analytics
     credentials = ServicePrincipalCredentials(
-        client_id = CLIENT_ID,
-        secret = KEY,
-        tenant = TENANT_ID,
+        client_id = os.environ["AZURE_CLIENT_ID"],
+        secret = os.environ["AZURE_CLIENT_SECRET"],
+        tenant = os.environ["AZURE_TENANT_ID"],
         resource = "https://api.loganalytics.io "
     )
-
+    
     client = LogAnalyticsDataClient(credentials, base_url=None)
 
-    workspace_id = WORKSPACE_ID
-    body = QueryBody(query = "union isfuzzy=true ({0}_CL |  summarize arg_max(TimeGenerated , TimeGenerated ) |project TimeGenerated ) | summarize arg_max(TimeGenerated , TimeGenerated ) | project TimeGenerated".format(LOG_ANALYTICS_LOGTYPE)) # the query
+    body = QueryBody(query = "union isfuzzy=true ({0}_CL |  summarize arg_max(TimeGenerated , TimeGenerated ) |project TimeGenerated ) | summarize arg_max(TimeGenerated , TimeGenerated ) | project TimeGenerated".format(log_type)) # the query
 
     query_results = client.query(workspace_id, body) # type: https://github.com/Azure/azure-sdk-for-python/blob/master/sdk/loganalytics/azure-loganalytics/azure/loganalytics/models/query_results.py
     table = query_results.tables[0] # https://github.com/Azure/azure-sdk-for-python/blob/master/sdk/loganalytics/azure-loganalytics/azure/loganalytics/models/table.py
@@ -207,12 +208,26 @@ def get_start_time(log_type):
     start_row = rows[0]
     start_time = start_row[0]
 
-    #Fail safe logic to go back 30 days from now if the start time cannot be parsed to a valid date time
+    #Go back 30 days from now if the start time cannot be parsed to a valid date time
     try:
         start_datetime = datetime.strptime(start_time,'%Y-%m-%dT%H:%M:%S.%fZ')
-    except ValueError:
+    except:
         start_datetime = datetime.utcnow() + timedelta(days=-30)
 
     return start_datetime
     
 
+def get_config():
+    # Create configuration dictionary for OCI
+    key_content = os.environ["OCI_KEY_CONTENT"]
+
+    config = {
+        "user": os.environ["USER_OCID"],
+        "fingerprint": os.environ["OCI_FINGERPRINT"],
+        "tenancy": os.environ["OCI_TENANCY"],
+        "key_content": key_content,
+        "region": os.environ["OCI_REGION"],
+        "pass_phrase": os.environ["OCI_PASS_PHRASE"]
+    }
+
+    return config
