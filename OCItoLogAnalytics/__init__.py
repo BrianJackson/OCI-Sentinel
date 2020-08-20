@@ -87,7 +87,7 @@ def initOCI():
             parsed_json = json.dumps(jsondoc, indent=4, sort_keys=True)
             #print("The event time is: {0}".format(jsondoc["event_time"]))
             # We use the event_time in OCI as the Date Generated in Log Analytics
-            post_data(customer_id, shared_key, parsed_json, log_type, jsondoc["event_time"])
+            post_data(customer_id, shared_key, parsed_json, log_type)
             #print(parsed_json)
 
 
@@ -154,13 +154,12 @@ def build_signature(customer_id, shared_key, date, content_length, method, conte
     return authorization
 
 # Build and send a request to the POST API
-def post_data(customer_id, shared_key, body, log_type, event_time):
+def post_data(customer_id, shared_key, body, log_type):
     method = 'POST'
     content_type = 'application/json'
     resource = '/api/logs'
     # Conversion of the OCI event time to RFC 1123 date format string
-    rfc1123date = datetime.strptime(event_time[:23],'%Y-%m-%dT%H:%M:%S.%f') \
-                    .strftime('%a, %d %b %Y %H:%M:%S GMT')
+    rfc1123date = datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')
     content_length = len(body)
     signature = build_signature(customer_id, shared_key, rfc1123date, content_length, method, content_type, resource)
     uri = 'https://' + customer_id + '.ods.opinsights.azure.com' + resource + '?api-version=2016-04-01'
