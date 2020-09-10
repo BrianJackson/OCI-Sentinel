@@ -116,11 +116,11 @@ resource "azurerm_function_app" "ocifun" {
     "USER_OCID" = var.ociuser
     "OCI_TENANCY"  = var.ocitenancy
     "OCI_REGION"  = var.ociregion
-    "LOG_ANALYTICS_KEY" = "@Microsoft.KeyVault(SecretUri=https://${azurerm_key_vault_secret.loganalyticskey.id})"
-    "AZURE_CLIENT_SECRET" = "@Microsoft.KeyVault(SecretUri=https://${azurerm_key_vault_secret.clientsecret.id})"
-    "OCI_KEY_CONTENT" = "@Microsoft.KeyVault(SecretUri=https://${azurerm_key_vault_secret.ocikey.id})"
-    "OCI_FINGERPRINT" = "@Microsoft.KeyVault(SecretUri=https://${azurerm_key_vault_secret.ocifingerprint.id})"
-    "OCI_PASS_PHRASE" = "@Microsoft.KeyVault(SecretUri=https://${azurerm_key_vault_secret.ocipassphrase.id})"
+    "LOG_ANALYTICS_KEY" = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.loganalyticskey.id})"
+    "AZURE_CLIENT_SECRET" = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.clientsecret.id})"
+    "OCI_KEY_CONTENT" = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.ocikey.id})"
+    "OCI_FINGERPRINT" = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.ocifingerprint.id})"
+    "OCI_PASS_PHRASE" = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.ocipassphrase.id})"
   }
 
   # The FUNCTIONS_EXTENSION_VERSION must be ~3 or higher, prevent overwrite to ~1
