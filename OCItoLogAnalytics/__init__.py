@@ -74,21 +74,13 @@ def initOCI():
         audit.base_client.set_region(r)
 
         #  Get audit events for the current region which is specified in the audit object.
-        audit_events = get_audit_events(customer_id,
+        get_audit_events(customer_id,
             shared_key,
             audit,
             compartments,
             start_time,
             end_time)
 
-        #  For each audit entry retrieved, post to Log Analytics
-        for event in audit_events: 
-            jsondoc = json.loads(str(event))
-            parsed_json = json.dumps(jsondoc, indent=4, sort_keys=True)
-            #print("The event time is: {0}".format(jsondoc["event_time"]))
-            # We use the event_time in OCI as the Date Generated in Log Analytics
-            post_data(customer_id, shared_key, parsed_json, log_type)
-            #print(parsed_json)
 
 
 # Copyright (c) 2016, 2020, Oracle and/or its affiliates.  All rights reserved.
@@ -117,7 +109,9 @@ def get_compartments(identity, tenancy_id):
         compartment_id=tenancy_id).data
 
     compartment_ocids = [c.id for c in filter(lambda c: c.lifecycle_state == 'ACTIVE', list_compartments_response)]
- 
+    # Add the root compartment 
+    compartment_ocids.append(tenancy_id)
+
     return compartment_ocids
 
 
@@ -130,19 +124,29 @@ def get_audit_events(customer_id, shared_key, audit, compartment_ocids, start_ti
     # Ideally, the generator method in oci.pagination should be used to lazily
     # load results.
     '''
-    list_of_audit_events = []
+
+    log_type = os.environ["LOG_ANALYTICS_LOGTYPE"]
 
     for c in compartment_ocids:
-        list_events_response = oci.pagination.list_call_get_all_results(
-            audit.list_events,
-            compartment_id=c,
-            start_time=start_time,
-            end_time=end_time).data
-        #  Results for a compartment 'c' for a region defined
-        #  in 'audit' object.
-        list_of_audit_events.extend(list_events_response)
+        # change here to get one page at a time and write events rather than getting
+        # all pages in a compartment, then getting all compartments then returning
+        # the entire set
+        for paged_audit_events in oci.pagination.list_call_get_all_results_generator(
+                audit.list_events,
+                yield_mode='response',
+                compartment_id=c,
+                start_time=start_time,
+                end_time=end_time
+            ):
         
-    return list_of_audit_events
+            for event in paged_audit_events.data: 
+                jsondoc = json.loads(str(event))
+                parsed_json = json.dumps(jsondoc, indent=4, sort_keys=True)
+                #print("The event time is: {0}".format(jsondoc["event_time"]))
+                # We use the event_time in OCI as the Date Generated in Log Analytics
+                post_data(customer_id, shared_key, parsed_json, log_type)
+ 
+
 
 def build_signature(customer_id, shared_key, date, content_length, method, content_type, resource):
     x_headers = 'x-ms-date:' + date
@@ -164,7 +168,6 @@ def post_data(customer_id, shared_key, body, log_type):
     signature = build_signature(customer_id, shared_key, rfc1123date, content_length, method, content_type, resource)
     uri = 'https://' + customer_id + '.ods.opinsights.azure.com' + resource + '?api-version=2016-04-01'
     print('URI : ' + uri)
-    print('Log Type :' + log_type)
     headers = {
         'content-type': content_type,
         'Authorization': signature,
@@ -194,23 +197,22 @@ def get_start_time(log_type):
         tenant = os.environ["AZURE_TENANT_ID"],
         resource = "https://api.loganalytics.io "
     )
-    
-    client = LogAnalyticsDataClient(credentials, base_url=None)
-
-    body = QueryBody(query = "union isfuzzy=true ({0}_CL |  summarize arg_max(TimeGenerated , TimeGenerated ) |project TimeGenerated ) | summarize arg_max(TimeGenerated , TimeGenerated ) | project TimeGenerated".format(log_type)) # the query
-
-    query_results = client.query(workspace_id, body) # type: https://github.com/Azure/azure-sdk-for-python/blob/master/sdk/loganalytics/azure-loganalytics/azure/loganalytics/models/query_results.py
-    table = query_results.tables[0] # https://github.com/Azure/azure-sdk-for-python/blob/master/sdk/loganalytics/azure-loganalytics/azure/loganalytics/models/table.py
-
-    rows = table.rows # [][] of arbitrary data
-
-    start_row = rows[0]
-    start_time = start_row[0]
-
-    #Go back 30 days from now if the start time cannot be parsed to a valid date time
     try:
+        client = LogAnalyticsDataClient(credentials, base_url=None)
+
+        body = QueryBody(query = "union isfuzzy=true ({0}_CL |  summarize arg_max(event_time_t , event_time_t ) | project event_time_t ) | summarize arg_max(event_time_t , event_time_t ) | project event_time_t".format(log_type)) # the query
+
+        query_results = client.query(workspace_id, body) # type: https://github.com/Azure/azure-sdk-for-python/blob/master/sdk/loganalytics/azure-loganalytics/azure/loganalytics/models/query_results.py
+        table = query_results.tables[0] # https://github.com/Azure/azure-sdk-for-python/blob/master/sdk/loganalytics/azure-loganalytics/azure/loganalytics/models/table.py
+
+        rows = table.rows # [][] of arbitrary data
+
+        start_row = rows[0]
+        start_time = start_row[0]
+
         start_datetime = datetime.strptime(start_time,'%Y-%m-%dT%H:%M:%S.%fZ')
     except:
+        #Go back 30 days from now if the start time cannot be parsed to a valid date time
         start_datetime = datetime.utcnow() + timedelta(days=-30)
 
     return start_datetime
