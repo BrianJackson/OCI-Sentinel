@@ -25,3 +25,7 @@ This function app will poll Oracle Cloud Audit Events API every 5 mins for logs.
     "OCI_PASS_PHRASE": "********",
     "OCI_TENANCY" : "ocid1.tenancy.oc1....",
     "OCI_REGION" : "us-ashburn-1"
+
+
+### Terraform
+The Terraform will deploy Azure Key Vault store the Oracle Cloud Infrastructure details that are needed.   The OCI_KEY_CONTENT secret is the content of the key file.   There are a number of ways to import this into a Key Vault secret  The Azure Function uses Key Vault references in its App Settings so these secrets are made available via the os.environ[] dictionary, which simplifies the code and improves portability.
