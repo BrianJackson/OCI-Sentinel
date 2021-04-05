@@ -1,3 +1,4 @@
+[![Board Status](https://brianjacdev.visualstudio.com/27939cff-d9e6-4e8a-a169-e9838ab2e691/614ebdd1-1b38-478a-801c-9b3bbcb33ff3/_apis/work/boardbadge/6556c3b7-9a71-40fa-bfa9-ace4714c590e)](https://brianjacdev.visualstudio.com/27939cff-d9e6-4e8a-a169-e9838ab2e691/_boards/board/t/614ebdd1-1b38-478a-801c-9b3bbcb33ff3/Microsoft.RequirementCategory)
 # Deploy Function App using the Schedule Trigger for getting Oracle Cloud Audit Events data into Azure Sentinel
 This function app will poll Oracle Cloud Audit Events API every 5 mins for logs.  It is designed to get AuditEvents.
 
